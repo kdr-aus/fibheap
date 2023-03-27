@@ -72,6 +72,30 @@ fn pushing(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+
+    c.bench_function("v2::FibonacciHeap::push one-el n100", |b| {
+        b.iter_batched_ref(
+            || v2::FibonacciHeap::from_iter(lrg.iter().take(100).copied()),
+            |heap| heap.push(500),
+            BatchSize::SmallInput,
+        );
+    });
+
+    c.bench_function("v2::FibonacciHeap::push one-el n10_000", |b| {
+        b.iter_batched_ref(
+            || v2::FibonacciHeap::from_iter(lrg.iter().take(10_000).copied()),
+            |heap| heap.push(500),
+            BatchSize::SmallInput,
+        );
+    });
+
+    c.bench_function("v2::FibonacciHeap::push one-el n10_000_000", |b| {
+        b.iter_batched_ref(
+            || v2::FibonacciHeap::from_iter(lrg.iter().take(10_000_000).copied()),
+            |heap| heap.push(500),
+            BatchSize::SmallInput,
+        );
+    });
 }
 
 fn construction(c: &mut Criterion) {
@@ -87,6 +111,14 @@ fn construction(c: &mut Criterion) {
     c.bench_function("v1::FibonacciHeap::from_iter n10_000", |b| {
         b.iter_with_large_drop(|| {
             black_box(v1::FibonacciHeap::from_iter(
+                lrg.iter().take(10_000).copied(),
+            ))
+        })
+    });
+
+    c.bench_function("v2::FibonacciHeap::from_iter n10_000", |b| {
+        b.iter_with_large_drop(|| {
+            black_box(v2::FibonacciHeap::from_iter(
                 lrg.iter().take(10_000).copied(),
             ))
         })
@@ -132,9 +164,33 @@ fn draining(c: &mut Criterion) {
         );
     });
 
-    c.bench_function("v1::FibonacciHeap drain 100_000", |b| {
+    //     c.bench_function("v1::FibonacciHeap drain 100_000", |b| {
+    //         b.iter_batched(
+    //             || v1::FibonacciHeap::from_iter(lrg.iter().copied()),
+    //             |mut heap| loop {
+    //                 if heap.pop().is_none() {
+    //                     break;
+    //                 }
+    //             },
+    //             BatchSize::SmallInput,
+    //         );
+    //     });
+
+    c.bench_function("v2::FibonacciHeap drain 1000", |b| {
         b.iter_batched(
-            || v1::FibonacciHeap::from_iter(lrg.iter().copied()),
+            || v2::FibonacciHeap::from_iter(lrg.iter().take(1000).copied()),
+            |mut heap| loop {
+                if heap.pop().is_none() {
+                    break;
+                }
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    c.bench_function("v2::FibonacciHeap drain 100_000", |b| {
+        b.iter_batched(
+            || v2::FibonacciHeap::from_iter(lrg.iter().copied()),
             |mut heap| loop {
                 if heap.pop().is_none() {
                     break;
@@ -177,6 +233,22 @@ fn use_case(c: &mut Criterion) {
     c.bench_function("v1::FibonacciHeap randomops 10_000", |b| {
         b.iter_with_large_drop(|| {
             let mut heap = v1::FibonacciHeap::new();
+            for op in &ops {
+                match op {
+                    Op::Pop => {
+                        heap.pop();
+                    }
+                    Op::Push(x) => heap.push(*x),
+                }
+            }
+
+            heap
+        });
+    });
+
+    c.bench_function("v2::FibonacciHeap randomops 10_000", |b| {
+        b.iter_with_large_drop(|| {
+            let mut heap = v2::FibonacciHeap::new();
             for op in &ops {
                 match op {
                     Op::Pop => {

@@ -2,17 +2,19 @@ use std::collections::LinkedList;
 
 pub struct FibonacciHeap<T> {
     roots: LinkedList<Tree<T>>,
+    len: usize,
 }
 
 impl<T: Ord> FibonacciHeap<T> {
     pub fn new() -> Self {
         Self {
             roots: Default::default(),
+            len: 0,
         }
     }
 
     pub fn len(&self) -> usize {
-        count_nodes(&self.roots)
+        self.len
     }
 
     pub fn push(&mut self, item: T) {
@@ -23,6 +25,8 @@ impl<T: Ord> FibonacciHeap<T> {
         } else {
             self.roots.push_back(Tree::new(item));
         }
+
+        self.len += 1;
     }
 
     pub fn peek(&self) -> Option<&T> {
@@ -36,11 +40,14 @@ impl<T: Ord> FibonacciHeap<T> {
             None => return None,
         };
 
+        // reduce the number of nodes
+        self.len -= 1;
+
         // add the child tree into the roots
         self.roots.extend(children);
 
         // perform the grouping of like-degrees
-        rebalance(&mut self.roots);
+        rebalance(&mut self.roots, self.len);
 
         // find the minimum root value
         bring_min_to_front(&mut self.roots);
@@ -68,12 +75,10 @@ impl<T: Ord> Extend<T> for FibonacciHeap<T> {
 /// Rebalances the list of roots such that no two roots share the same degree.
 /// The method employed uses a temporary array to order the trees by degrees.
 /// This has a worst case of `O(n)` but is _amortised_ as `O(log n)`.
-fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>) {
+fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>, nodes: usize) {
     if roots.is_empty() {
         return;
     }
-
-    let nodes = count_nodes(roots);
 
     // NOTE: this will panic if nodes == 0
     let cap = nodes.ilog2() + 1;
@@ -122,10 +127,6 @@ fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>) {
     roots.extend(buf.into_iter().filter_map(|x| x));
 }
 
-fn count_nodes<T>(xs: &LinkedList<Tree<T>>) -> usize {
-    xs.iter().map(Tree::count_nodes).sum()
-}
-
 fn bring_min_to_front<T: Ord>(roots: &mut LinkedList<Tree<T>>) {
     let min_index = roots
         .iter()
@@ -163,10 +164,6 @@ impl<T> Tree<T> {
     fn degree(&self) -> usize {
         self.children.len()
     }
-
-    fn count_nodes(&self) -> usize {
-        1 + self.children.iter().map(Self::count_nodes).sum::<usize>()
-    }
 }
 
 #[cfg(test)]
@@ -176,8 +173,9 @@ mod tests {
 
     #[quickcheck]
     fn min_heap_property(xs: Vec<u32>) {
+        let len = xs.len();
         let mut ll = LinkedList::from_iter(xs.into_iter().map(Tree::new));
-        rebalance(&mut ll);
+        rebalance(&mut ll, len);
 
         // verify that all degrees are unique
         // we can leverage the fact that degrees are in _ascending_ order
@@ -190,18 +188,19 @@ mod tests {
         }
 
         // check that a rebalance does not break it
-        rebalance(&mut ll);
+        rebalance(&mut ll, len);
     }
 
     #[quickcheck]
     fn recycle_on_min(xs: Vec<u32>) {
+        let len = xs.len();
         let min = xs.iter().min().copied();
         let mut ll = LinkedList::from_iter(xs.into_iter().map(Tree::new));
         bring_min_to_front(&mut ll);
 
         assert_eq!(min.as_ref(), ll.front().map(Tree::root));
 
-        rebalance(&mut ll);
+        rebalance(&mut ll, len);
         bring_min_to_front(&mut ll);
         assert_eq!(min.as_ref(), ll.front().map(Tree::root));
     }
