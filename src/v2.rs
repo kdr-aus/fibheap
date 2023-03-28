@@ -1,7 +1,5 @@
-use std::collections::LinkedList;
-
 pub struct FibonacciHeap<T> {
-    roots: LinkedList<Tree<T>>,
+    roots: Vec<Tree<T>>,
     len: usize,
 }
 
@@ -18,24 +16,28 @@ impl<T: Ord> FibonacciHeap<T> {
     }
 
     pub fn push(&mut self, item: T) {
-        if self.peek().map(|o| &item <= o).unwrap_or(true) {
-            // item is lt or eq to min value, or list is empty
-            // push to front, becoming **new min**
-            self.roots.push_front(Tree::new(item));
-        } else {
-            self.roots.push_back(Tree::new(item));
+        // item is lt or eq to min value, or list is empty
+        // push to **back**, becoming **new min**
+        let new_min = self.peek().map(|o| &item <= o).unwrap_or(true);
+
+        self.roots.push(Tree::new(item));
+
+        if !new_min {
+            // not a new min, so swap the last 2 elements
+            let i = self.roots.len() - 1;
+            self.roots.swap(i - 1, i);
         }
 
         self.len += 1;
     }
 
     pub fn peek(&self) -> Option<&T> {
-        self.roots.front().map(Tree::root)
+        self.roots.last().map(Tree::root)
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        // take the front of the roots, since this is the _minimum_ value
-        let Tree { node, children } = match self.roots.pop_front() {
+        // take the last of the roots, since this is the _minimum_ value
+        let Tree { node, children } = match self.roots.pop() {
             Some(x) => x,
             None => return None,
         };
@@ -50,7 +52,7 @@ impl<T: Ord> FibonacciHeap<T> {
         rebalance(&mut self.roots, self.len);
 
         // find the minimum root value
-        bring_min_to_front(&mut self.roots);
+        order_min(&mut self.roots);
 
         Some(node)
     }
@@ -66,7 +68,12 @@ impl<T: Ord> FromIterator<T> for FibonacciHeap<T> {
 
 impl<T: Ord> Extend<T> for FibonacciHeap<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        for x in iter.into_iter() {
+        let iter = iter.into_iter();
+        if let (_, Some(upr)) = iter.size_hint() {
+            self.roots.reserve(upr);
+        }
+
+        for x in iter {
             self.push(x);
         }
     }
@@ -75,7 +82,7 @@ impl<T: Ord> Extend<T> for FibonacciHeap<T> {
 /// Rebalances the list of roots such that no two roots share the same degree.
 /// The method employed uses a temporary array to order the trees by degrees.
 /// This has a worst case of `O(n)` but is _amortised_ as `O(log n)`.
-fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>, nodes: usize) {
+fn rebalance<T: Ord>(roots: &mut Vec<Tree<T>>, nodes: usize) {
     if roots.is_empty() {
         return;
     }
@@ -88,7 +95,7 @@ fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>, nodes: usize) {
         std::iter::repeat_with(|| None).take(cap as usize).collect();
 
     // iterate through the roots
-    while let Some(mut tree) = roots.pop_front() {
+    while let Some(mut tree) = roots.pop() {
         loop {
             let degree = tree.degree();
             debug_assert!(
@@ -127,7 +134,7 @@ fn rebalance<T: Ord>(roots: &mut LinkedList<Tree<T>>, nodes: usize) {
     roots.extend(buf.into_iter().filter_map(|x| x));
 }
 
-fn bring_min_to_front<T: Ord>(roots: &mut LinkedList<Tree<T>>) {
+fn order_min<T: Ord>(roots: &mut [Tree<T>]) {
     let min_index = roots
         .iter()
         .enumerate()
@@ -135,12 +142,8 @@ fn bring_min_to_front<T: Ord>(roots: &mut LinkedList<Tree<T>>) {
         .map(|(idx, _)| idx);
 
     if let Some(idx) = min_index {
-        // split off returns a LinkedList with `idx` at the front (our minimum)
-        let mut split = roots.split_off(idx);
-        // append the remaining roots to the **end** of the split
-        split.append(roots);
-        // set the roots reference to be the new list
-        *roots = split;
+        let lastidx = roots.len() - 1; // len >= 1
+        roots.swap(idx, lastidx); // min at end
     }
 }
 
@@ -174,7 +177,7 @@ mod tests {
     #[quickcheck]
     fn min_heap_property(xs: Vec<u32>) {
         let len = xs.len();
-        let mut ll = LinkedList::from_iter(xs.into_iter().map(Tree::new));
+        let mut ll = Vec::from_iter(xs.into_iter().map(Tree::new));
         rebalance(&mut ll, len);
 
         // verify that all degrees are unique
@@ -195,14 +198,14 @@ mod tests {
     fn recycle_on_min(xs: Vec<u32>) {
         let len = xs.len();
         let min = xs.iter().min().copied();
-        let mut ll = LinkedList::from_iter(xs.into_iter().map(Tree::new));
-        bring_min_to_front(&mut ll);
+        let mut ll = Vec::from_iter(xs.into_iter().map(Tree::new));
+        order_min(&mut ll);
 
-        assert_eq!(min.as_ref(), ll.front().map(Tree::root));
+        assert_eq!(min.as_ref(), ll.last().map(Tree::root));
 
         rebalance(&mut ll, len);
-        bring_min_to_front(&mut ll);
-        assert_eq!(min.as_ref(), ll.front().map(Tree::root));
+        order_min(&mut ll);
+        assert_eq!(min.as_ref(), ll.last().map(Tree::root));
     }
 
     #[quickcheck]
